@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
+	"path"
 )
 
 type RouterConfig struct {
@@ -23,7 +23,7 @@ type RouterConfig struct {
 
 func NewHandler(config RouterConfig, log *slog.Logger, mgr *session.SessionManager) http.Handler {
 	router := gin.Default()
-	gin.SetMode(gin.ReleaseMode)
+	//gin.SetMode(gin.ReleaseMode)
 
 	router.SetHTMLTemplate(templates.GetTemplate("*"))
 
@@ -31,13 +31,9 @@ func NewHandler(config RouterConfig, log *slog.Logger, mgr *session.SessionManag
 		ControllerConfig{Workdir: config.Workdir, Command: config.Command, ExtraEnv: config.ExtraEnv},
 		log, mgr,
 	)
-	prefixPath := strings.TrimRight(config.PrefixPath, "/")
+	prefixPath := config.PrefixPath
 
-	if prefixPath == "" {
-		prefixPath = "/"
-	}
-
-	router.GET(prefixPath, func(context *gin.Context) {
+	router.GET(path.Join(prefixPath, "/"), func(context *gin.Context) {
 		if config.IndexFile != "" {
 			content, err := os.ReadFile(config.IndexFile)
 			if err != nil {
@@ -50,11 +46,11 @@ func NewHandler(config RouterConfig, log *slog.Logger, mgr *session.SessionManag
 		}
 
 		context.HTML(http.StatusOK, "index.html", gin.H{
-			"prefix_path": prefixPath,
+			"prefix_path": path.Join(prefixPath, "/"),
 		})
 	})
 
-	router.GET(prefixPath+"/favicon.ico", func(c *gin.Context) {
+	router.GET(path.Join(prefixPath, "/favicon.ico"), func(c *gin.Context) {
 		data, err := templates.GetFile("favicon.ico")
 		if err != nil {
 			c.Status(http.StatusNotFound)
@@ -64,8 +60,8 @@ func NewHandler(config RouterConfig, log *slog.Logger, mgr *session.SessionManag
 		c.Data(http.StatusOK, "image/x-icon", data)
 	})
 
-	router.Any(prefixPath+"/remove_session", ctrl.RemoveSession)
-	router.GET(prefixPath+"/ws", ctrl.Websocket)
+	router.Any(path.Join(prefixPath, "/remove_session"), ctrl.RemoveSession)
+	router.GET(path.Join(prefixPath, "/ws"), ctrl.Websocket)
 
 	log.Info("command -> " + config.Command)
 	log.Info("workdir -> " + config.Workdir)
