@@ -1,10 +1,10 @@
 # WebTTY
 
-WebTTY用于在页面上使用终端；该服务支持在不稳定的网络环境下保持终端链接；
+WebTTY is used to use the terminal on a web page. This service supports maintaining the terminal connection in an unstable network environment.
 
-## 使用方式
+## Usage
 
-根据系统下载可执行文件后，可用指令如下：
+After downloading the executable file according to your system, you can use the following commands:
 
 ```shell
 $ webtty -h
@@ -22,7 +22,7 @@ $ webtty -h
         Workdir for the command, default is current directory
 ```
 
-运行方式：
+Running method:
 
 ```shell
 $ webtty -command bash
@@ -32,15 +32,14 @@ time=2025-02-09T20:07:31.820+08:00 level=INFO msg="workdir -> "
 time=2025-02-09T20:07:31.820+08:00 level=INFO msg="please visit http://localhost:8080/"
 ```
 
-然后打开网页http://localhost:8080/后即可使用
+Then open the web page http://localhost:8080/ and you can start using it.
 
-## 构建
+## Building
 
-构建过程使用框架：https://taskfile.dev/
+The framework used in the building process: https://taskfile.dev/
 
-下面的指令用于构建所有二进制压缩包
+The following command is used to build all binary packages:
 
 ```shell
 task build
 ```
-
