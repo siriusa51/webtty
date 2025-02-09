@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" href="{{ .prefix_path }}/favicon.ico" type="image/x-icon">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="title">WebTTY</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css">
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #1e1e1e;
+        }
+
+        #terminal {
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+<div id="terminal"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+<script>
+
+    function deleteSession(path) {
+        navigator.sendBeacon(path);
+    }
+
+    function decodeBase64(data) {
+        const binary = atob(data);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return new TextDecoder("utf-8").decode(bytes);
+    }
+
+    function generateId(length) {
+        let result = '';
+        const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        const charactersLength = characters.length;
+
+        for (let i = 0; i < length; i++) {
+            result += characters.charAt(Math.floor(Math.random() * charactersLength));
+        }
+
+        return result;
+    }
+
+    function sendWebsocket(socket, type, data) {
+        socket.send(type + data);
+    }
+
+    function sendInput(socket, data) {
+        sendWebsocket(socket, "1", data);
+    }
+
+    function sendResize(socket, cols, rows) {
+        sendWebsocket(socket, "2", JSON.stringify({width: cols, height: rows}));
+    }
+
+    function sendPing(socket) {
+        sendWebsocket(socket, "3", "ping");
+    }
+
+    const terminal = new Terminal();
+    const fitAddon = new FitAddon.FitAddon();
+    terminal.loadAddon(fitAddon);
+    terminal.open(document.getElementById('terminal'));
+    fitAddon.fit();
+
+    terminal.focus();
+
+    let isConnected = false;
+    let isClosed = false;
+
+    let protocol = "ws";
+    if (window.location.protocol === "https:") {
+        protocol = "wss";
+    }
+
+    //
+    let sid = generateId(6);
+
+    let urlParams = new URLSearchParams(window.location.search);
+    let title = urlParams.get("title");
+    if (title) {
+        document.getElementById("title").innerText = `WebTTY - ${title}`;
+    } else {
+        document.getElementById("title").innerText = `WebTTY - ${sid}`;
+    }
+    let wsPath = "";
+    let rlsessPath = "";
+    let pingPath = "";
+    if (window.location.pathname.endsWith("/")) {
+        wsPath = window.location.pathname + "ws"
+        pingPath = window.location.pathname + "ping"
+        rlsessPath = window.location.pathname + `remove_session?sid=${sid}`
+    } else {
+        wsPath = window.location.pathname + "/ws"
+        pingPath = window.location.pathname + "/ping"
+        rlsessPath = window.location.pathname + `/remove_session?sid=${sid}`
+    }
+
+    let wsUrl = `${protocol}://${window.location.host}${wsPath}?sid=${sid}`;
+
+    let socket;
+    let connectTime = Date.UTC(2000, 1, 1, 0, 0, 0, 0);
+
+    function connectSocket() {
+        if (Date.now() - connectTime < 1000) {
+            console.log("connect too fast, ignore...")
+            return;
+        }
+
+        connectTime = Date.now();
+
+        if (socket) {
+            switch (socket.readyState) {
+                case WebSocket.CONNECTING:
+                    return;
+                case WebSocket.OPEN:
+                    return;
+                default:
+                    socket.close();
+                    break;
+            }
+        }
+
+        socket = new WebSocket(wsUrl);
+
+        socket.addEventListener('open', () => {
+            fitAddon.fit();
+            isConnected = true;
+            isClosed = false;
+            console.log("socket is opened...")
+
+            sendResize(socket, terminal.cols, terminal.rows);
+            // Add ping messages to keep the connection alive
+            setInterval(() => {
+                if (isConnected) {
+                    sendPing(socket);
+                }
+            }, 10000); // Send ping every 10 seconds
+        });
+
+        socket.addEventListener('message', (event) => {
+            if (event.data.length === 0) {
+                return;
+            }
+
+            switch (event.data[0]) {
+                case "1":
+                    // recv data
+                    let data = decodeBase64(event.data.slice(1, event.data.length));
+                    terminal.write(data);
+                    break;
+                case "2":
+                    // recv ping
+                    return;
+                case "3":
+                    // recv exit signal
+                    console.log("receive exit signal...")
+                    isClosed = true;
+                    socket.close();
+                    break;
+            }
+        });
+
+        socket.addEventListener('error', (error) => {
+            console.error('websocket receive error:', error.message);
+        });
+
+        socket.addEventListener('close', () => {
+            console.log("socket is closed...")
+            isConnected = false;
+            if (!isClosed) {
+                let delta = 5;
+                console.log(`socket closed, try reconnect in ${delta}s...`)
+                setTimeout(() => {
+                    if (!isConnected) {
+                        connectSocket();
+                    }
+                }, delta * 1000);
+            } else {
+                deleteSession(rlsessPath);
+                terminal.writeln("\r\n--------------------------------------------------------------");
+                terminal.writeln("\r\nTermial closed...");
+                terminal.writeln("\r\nPlease refresh the page to reconnect...");
+                terminal.writeln("\r\n--------------------------------------------------------------");
+            }
+        });
+    }
+
+    terminal.onData(data => {
+        if (isConnected) {
+            sendInput(socket, data);
+        } else if (!isClosed) {
+            console.log("click to reconnect...")
+            connectSocket();
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        fitAddon.fit();
+
+        if (isConnected) {
+            sendResize(socket, terminal.cols, terminal.rows);
+        }
+    });
+
+    window.addEventListener('unload', () => {
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.close();
+        }
+
+        deleteSession(rlsessPath);
+    });
+
+    connectSocket();
+
+</script>
+</body>
+</html>

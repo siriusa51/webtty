@@ -1,0 +1,34 @@
+version: "3"
+
+tasks:
+  build:
+    desc: Build webtty for all supported OS and ARCH
+    cmds:
+      - for:
+          matrix:
+            OS: [ "linux", "darwin" ]
+            ARCH: [ "amd64", "arm64" ]
+        vars:
+          OS: "{{.ITEM.OS}}"
+          ARCH: "{{.ITEM.ARCH}}"
+        task: build-osarch
+
+  build-osarch:
+    desc: Build webtty for a specific OS and ARCH
+    vars:
+      TARGET_NAME: webtty-{{.OS}}-{{.ARCH}}
+    cmds:
+      - mkdir -p build/{{.TARGET_NAME}}
+      - GOOS={{.OS}} GOARCH={{.ARCH}} go build -o build/{{.TARGET_NAME}}/webtty ./main.go
+      - tar -czf build/{{.TARGET_NAME}}.tar.gz -C build/{{.TARGET_NAME}} .
+
+  unittest:
+    desc: Run unit tests
+    cmds:
+      - go test ./...
+
+  coverage:
+    desc: Generate coverage report
+    cmds:
+      - go test -coverprofile=coverage.out ./...
+      - go tool cover -html=coverage.out
