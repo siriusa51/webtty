@@ -38,7 +38,9 @@ func NewController(config ControllerConfig, log *slog.Logger, mgr *session.Sessi
 		log:    log.With("module", "apis/controller"),
 		mgr:    mgr,
 		upgrader: &websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
+			ReadBufferSize:  4096,
+			WriteBufferSize: 4096,
+			CheckOrigin:     func(r *http.Request) bool { return true },
 		},
 	}
 }
@@ -135,12 +137,12 @@ func ttyClientHandler(ctx context.Context, log *slog.Logger, conn *websocket.Con
 					return fmt.Errorf("failed to read message from client: %w", err)
 				}
 
-				if mt != websocket.TextMessage {
-					return fmt.Errorf("invalid message type: %d", mt)
+				if mt == websocket.CloseMessage {
+					return SessionStopped
 				}
 
-				if mt == websocket.CloseMessage {
-					return nil
+				if mt != websocket.TextMessage {
+					return fmt.Errorf("invalid message type: %d", mt)
 				}
 
 				if len(message) == 0 {
@@ -194,7 +196,7 @@ func ttyServerHandler(ctx context.Context, log *slog.Logger, conn *websocket.Con
 			}
 		}()
 
-		buff := make([]byte, 1024)
+		buff := make([]byte, 4096)
 
 		for {
 			select {
